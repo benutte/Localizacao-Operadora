@@ -1,2 +1,4 @@
 .env
 .venv
+estacoes_smp.db
+src/Estacoes_SMP.csv
