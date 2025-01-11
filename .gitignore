@@ -2,3 +2,4 @@
 .venv
 estacoes_smp.db
 src/Estacoes_SMP.csv
+app1.py

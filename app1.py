@@ -3,107 +3,165 @@ import sqlite3
 import streamlit as st
 import plotly.express as px
 import os
+from datetime import datetime
+import folium
+from streamlit_folium import st_folium
 
-# Função para carregar e limpar os dados
-def load_and_clean_data(file_path: str) -> pd.DataFrame:
-    """Carrega e limpa os dados do CSV"""
-    df = pd.read_csv(file_path, sep=';', low_memory=False)
-    
-    # Colunas a serem mantidas
-    cols = [
-        'Número Estação', 'FreqTxMHz', 'FreqRxMHz', 'Designação Emissão', 'Tecnologia',
-        'Latitude', 'Longitude', 'Latitude decimal', 'Longitude decimal', 'EnderecoEstacao',
-        'EndBairro', 'EndNumero', 'EndComplemento', 'Cep', 'Empresa Estação', 'Faixa Estação',
-        'Subfaixa Estação', 'Geração', 'Município-UF', 'UF'
+# Função para tratar e salvar os dados no banco
+def tratar_dados(csv_path, db_path='estacoes_smp.db'):
+    """Trata os dados do CSV e salva no banco de dados SQLite."""
+    # Carregar os dados
+    df = pd.read_csv(csv_path, sep=';', low_memory=False)
+
+    # Selecionar colunas relevantes
+    colunas_relevantes = [
+        'UF', 'Município-UF', 'EndBairro', 'EnderecoEstacao', 'Tecnologia',
+        'Empresa Estação', 'Geração', 'FreqRxMHz', 'FreqTxMHz',
+        'Latitude decimal', 'Longitude decimal', 'Número Estação'
     ]
-    df = df[cols]
-    
-    # Renomear as colunas conforme solicitado
-    df = df.rename(columns={
-        'EnderecoEstacao': 'Endereço',
-        'EndBairro': 'Bairro',
-        'Empresa Estação': 'Operadora'
-    })
-    
-    # Limpar todas as colunas de string
-    for col in df.select_dtypes(include=['object']).columns:
-        df[col] = df[col].astype(str).str.strip()
-    
-    # Formatar a coluna 'Número Estação' para numérico com valores nulos
-    df['Número Estação'] = pd.to_numeric(df['Número Estação'], errors='coerce').astype('Int64')
+    df = df[colunas_relevantes]
 
-    # Converter latitude e longitude decimal para float
+    # Renomear colunas
+    df.rename(columns={
+        'EndBairro': 'Bairro',
+        'EnderecoEstacao': 'Endereço',
+        'Empresa Estação': 'Operadora',
+    }, inplace=True)
+
+    # Formatar strings
+    for col in ['UF', 'Município-UF', 'Bairro', 'Endereço', 'Tecnologia', 'Operadora', 'Geração']:
+        df[col] = df[col].astype(str).str.strip()
+
+    # Converter para tipos numéricos
+    df['FreqRxMHz'] = pd.to_numeric(df['FreqRxMHz'], errors='coerce')
+    df['FreqTxMHz'] = pd.to_numeric(df['FreqTxMHz'], errors='coerce')
     df['Latitude decimal'] = pd.to_numeric(df['Latitude decimal'], errors='coerce')
     df['Longitude decimal'] = pd.to_numeric(df['Longitude decimal'], errors='coerce')
+    df['Número Estação'] = pd.to_numeric(df['Número Estação'], errors='coerce').astype('Int64')
 
-    return df
+    # Remover linhas inválidas
+    df.dropna(subset=['UF', 'Município-UF', 'Bairro', 'Endereço', 'Latitude decimal', 'Longitude decimal'], inplace=True)
 
-# Função para salvar os dados no banco SQLite
-def save_to_sqlite(df: pd.DataFrame, db_name: str, table_name: str):
-    """Salva o DataFrame em um banco SQLite, se o banco não existir"""
-    if not os.path.exists(db_name):  # Verifica se o banco de dados já existe
-        conn = sqlite3.connect(db_name)
-        df.to_sql(table_name, conn, if_exists='replace', index=False)
-        conn.close()
-        st.success("Base de dados salva com sucesso no SQLite!")
+    # Salvar no banco SQLite
+    conn = sqlite3.connect(db_path)
+    df.to_sql('estacoes', conn, if_exists='replace', index=False)
+    conn.close()
+    print("Dados tratados e salvos no banco SQLite com sucesso!")
+
+# Função para verificar se o banco precisa ser recriado
+def precisa_recriar_banco(log_path='update_log.txt'):
+    """Verifica se o banco de dados precisa ser recriado com base na última data de atualização."""
+    hoje = datetime.now().date()
+    if os.path.exists(log_path):
+        with open(log_path, 'r') as f:
+            ultima_atualizacao = f.read().strip()
+        if ultima_atualizacao == str(hoje):
+            return False  # Já foi atualizado hoje
+    # Atualizar o arquivo com a data de hoje
+    with open(log_path, 'w') as f:
+        f.write(str(hoje))
+    return True
+
+# Main
+if __name__ == "__main__":
+    # Caminhos para o CSV, banco e log
+    csv_path = 'src/Estacoes_SMP.csv'
+    db_path = 'estacoes_smp.db'
+    log_path = 'update_log.txt'
+
+    # Verificar se é necessário recriar o banco
+    if precisa_recriar_banco(log_path):
+        st.info("Atualizando o banco de dados com os dados mais recentes...")
+        tratar_dados(csv_path, db_path)
     else:
-        st.warning("Banco de dados já existe. Não foi necessário criar novamente.")
+        st.success("O banco já foi atualizado hoje. Pulando recriação.")
 
-# Caminho do arquivo CSV
-file_path = 'src/Estacoes_SMP.csv'
+    # Streamlit Interface
+    st.title("Análise de Estações SMP")
+    st.sidebar.header("Filtros")
 
-# Carregar os dados
-df = load_and_clean_data(file_path)
+    # Função para consultar o banco de dados
+    @st.cache_data
+    def query_db(query: str, db_path: str = 'estacoes_smp.db'):
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
 
-# Salvar os dados no banco SQLite apenas se o banco não existir
-save_to_sqlite(df, 'estacoes_smp.db', 'estacoes')
+    # Configurar filtros
+    uf_filter = st.sidebar.multiselect(
+        "Selecione os estados (UF):",
+        options=query_db("SELECT DISTINCT UF FROM estacoes")['UF'].tolist()
+    )
 
-# Streamlit Dashboard
-st.title("Dashboard de Estações SMP")
+    # Carregar dados filtrados
+    if uf_filter:
+        query = f"""
+        SELECT 
+            UF, 
+            `Município-UF` AS Municipio, 
+            Bairro, 
+            Endereço, 
+            Tecnologia, 
+            Operadora, 
+            Geração, 
+            FreqRxMHz, 
+            FreqTxMHz, 
+            `Latitude decimal` AS Latitude, 
+            `Longitude decimal` AS Longitude,
+            `Número Estação`
+        FROM estacoes
+        WHERE UF IN ({','.join([f"'{uf}'" for uf in uf_filter])})
+        """
+        filtered_df = query_db(query)
+    else:
+        st.info("Selecione ao menos um estado (UF) para carregar os dados.")
+        st.stop()
 
-# Filtros para reduzir os dados
-st.sidebar.header("Filtros")
-uf_filter = st.sidebar.multiselect("Selecione os estados (UF):", options=df['UF'].unique(), default=df['UF'].unique())
-operadora_filter = st.sidebar.multiselect("Selecione as Operadoras:", options=df['Operadora'].unique(), default=df['Operadora'].unique())
+    # Limitar a quantidade de linhas exibidas
+    max_rows = st.sidebar.slider("Máximo de linhas exibidas:", min_value=100, max_value=5000, step=100, value=1000)
+    filtered_df = filtered_df.head(max_rows)
 
-# Aplicar filtros
-filtered_df = df[(df['UF'].isin(uf_filter)) & (df['Operadora'].isin(operadora_filter))]
+    # Tabela Interativa
+    st.subheader("Tabela de Estações")
+    st.dataframe(filtered_df)
 
-# Limitar os dados carregados
-max_rows = st.sidebar.slider("Máximo de linhas exibidas:", min_value=100, max_value=5000, step=100, value=1000)
-filtered_df = filtered_df.sample(n=min(max_rows, len(filtered_df)), random_state=42)
+    # Mapa Interativo com folium
+    st.subheader("Mapa com as Operadoras")
+    map_center = [filtered_df['Latitude'].mean(), filtered_df['Longitude'].mean()]
+    m = folium.Map(location=map_center, zoom_start=4, tiles="cartodb positron")
 
-# Exibir a tabela com as colunas selecionadas
-st.subheader("Tabela de Estações")
-st.dataframe(filtered_df[['UF', 'Município-UF', 'Bairro', 'Endereço', 'Tecnologia', 'Operadora', 'Geração', 'FreqRxMHz', 'FreqTxMHz']])
+    # Adicionar marcadores
+    for index, row in filtered_df.iterrows():
+        folium.Marker(
+            location=[row['Latitude'], row['Longitude']],
+            popup=f"Operadora: {row['Operadora']}<br>Endereço: {row['Endereço']}",
+            icon=folium.Icon(color='blue')
+        ).add_to(m)
 
-# Criar o mapa com as operadoras usando longitude e latitude decimal
-st.subheader("Mapa com as Operadoras")
-fig = px.scatter_geo(filtered_df,
-                     lat='Latitude decimal',
-                     lon='Longitude decimal',
-                     color='Operadora',
-                     hover_name='Endereço',
-                     hover_data=['Bairro', 'Tecnologia', 'Geração'],
-                     title="Localização das Operadoras")
-st.plotly_chart(fig)
+    # Exibir mapa no Streamlit
+    st_folium(m, width=700, height=500)
 
-# Gráfico de colunas com as Operadoras
-st.subheader("Gráfico de Operadoras")
-operadoras_count = filtered_df.groupby('Operadora', as_index=False)['Número Estação'].sum()
-fig_operadoras = px.bar(operadoras_count,
-                        x='Operadora',
-                        y='Número Estação',
-                        labels={'Operadora': 'Operadora', 'Número Estação': 'Total de Estações'},
-                        title="Total de Estações por Operadora")
-st.plotly_chart(fig_operadoras)
+    # Gráfico de Colunas com Operadoras
+    st.subheader("Gráfico de Operadoras")
+    operadoras_count = filtered_df.groupby('Operadora', as_index=False)['Número Estação'].sum()
+    fig_operadoras = px.bar(
+        operadoras_count,
+        x='Operadora',
+        y='Número Estação',
+        labels={'Operadora': 'Operadora', 'Número Estação': 'Total de Estações'},
+        title="Total de Estações por Operadora"
+    )
+    st.plotly_chart(fig_operadoras)
 
-# Gráfico de colunas com as Gerações
-st.subheader("Gráfico de Gerações")
-geracoes_count = filtered_df.groupby('Geração', as_index=False)['Número Estação'].sum()
-fig_geracoes = px.bar(geracoes_count,
-                      x='Geração',
-                      y='Número Estação',
-                      labels={'Geração': 'Geração', 'Número Estação': 'Total de Estações'},
-                      title="Total de Estações por Geração")
-st.plotly_chart(fig_geracoes)
+    # Gráfico de Colunas com Gerações
+    st.subheader("Gráfico de Gerações")
+    geracoes_count = filtered_df.groupby('Geração', as_index=False)['Número Estação'].sum()
+    fig_geracoes = px.bar(
+        geracoes_count,
+        x='Geração',
+        y='Número Estação',
+        labels={'Geração': 'Geração', 'Número Estação': 'Total de Estações'},
+        title="Total de Estações por Geração"
+    )
+    st.plotly_chart(fig_geracoes)
