@@ -6,8 +6,8 @@ Este projeto tem como objetivo, realizar consultas, gerar visualizações intera
 
     Consulta de Dados: Permite a consulta dos dados filtrados por estado (UF) e cidade.
     Visualizações Interativas: Gera mapas e gráficos interativos utilizando Plotly, incluindo:
-        Mapa de estações por operadora com cores personalizadas.
-        Gráficos de barras mostrando o total de estações por operadora e geração.
+        * Mapa de estações por operadora com cores personalizadas.
+        * Gráficos de barras mostrando o total de estações por operadora e geração.
     Consulta de Estações Próximas: Permite ao usuário consultar as estações mais próximas a uma localização fornecida, com a distância calculada entre o ponto informado e as estações.
 
 🛠️ Tecnologias Utilizadas
@@ -21,14 +21,14 @@ Este projeto tem como objetivo, realizar consultas, gerar visualizações intera
 
 📂 Estrutura do Projeto
 
-    monitoramento_estacoes/
-  ├── app.py              # Código principal para tratamento de dados e interface com Streamlit
-  ├── estacoes_smp.db     # Banco de dados SQLite com as estações
-  ├── src/                # Arquivos fontes, como o CSV de entrada
-  │   └── Estacoes_SMP.csv  # Arquivo CSV com os dados das estações
-  ├── update_log.txt      # Arquivo de log para verificar a necessidade de recriar o banco
-  ├── requirements.txt    # Dependências do projeto
-  ├── README.md           # Documentação do projeto
+        monitoramento_estacoes/
+      ├── app.py              # Código principal para tratamento de dados e interface com Streamlit
+      ├── estacoes_smp.db     # Banco de dados SQLite com as estações
+      ├── src/                # Arquivos fontes, como o CSV de entrada
+      │   └── Estacoes_SMP.csv  # Arquivo CSV com os dados das estações
+      ├── update_log.txt      # Arquivo de log para verificar a necessidade de recriar o banco
+      ├── requirements.txt    # Dependências do projeto
+      ├── README.md           # Documentação do projeto
 
 📥 Como Rodar o Projeto
 
