@@ -4,6 +4,7 @@ import streamlit as st
 import plotly.express as px
 import os
 from datetime import datetime
+from geopy.distance import geodesic
 
 # Função para tratar e salvar os dados no banco
 def tratar_dados(csv_path, db_path='estacoes_smp.db'):
@@ -86,13 +87,19 @@ if __name__ == "__main__":
         conn.close()
         return df
 
-    # Configurar filtros
+    # Configurar filtros para UF
     uf_filter = st.sidebar.multiselect(
         "Selecione os estados (UF):",
         options=query_db("SELECT DISTINCT UF FROM estacoes")['UF'].tolist()
     )
 
-    # Carregar dados filtrados
+    # Configurar filtros para Cidade
+    cidade_filter = st.sidebar.multiselect(
+        "Selecione as cidades:",
+        options=query_db("SELECT DISTINCT `Município-UF` FROM estacoes")["Município-UF"].tolist()
+    )
+
+    # Carregar dados filtrados por UF
     if uf_filter:
         query = f"""
         SELECT 
@@ -116,42 +123,70 @@ if __name__ == "__main__":
         st.info("Selecione ao menos um estado (UF) para carregar os dados.")
         st.stop()
 
+    # Filtrar os dados por cidade se algum filtro de cidade for selecionado
+    if cidade_filter:
+        filtered_df = filtered_df[filtered_df['Municipio'].isin(cidade_filter)]
+
     # Limitar a quantidade de linhas exibidas
     max_rows = st.sidebar.slider("Máximo de linhas exibidas:", min_value=100, max_value=5000, step=100, value=1000)
     filtered_df = filtered_df.head(max_rows)
+    # Defina as colunas desejadas
+    colunas_desejadas = ['UF', 'Municipio', 'Bairro', 'Endereço', 'Tecnologia', 'Operadora', 'Geração', 'FreqRxMHz', 'FreqTxMHz']
+
+    # Filtrar as colunas desejadas no DataFrame
+    filtered_df_desejado = filtered_df[colunas_desejadas]
 
     # Tabela Interativa
     st.subheader("Tabela de Estações")
-    st.dataframe(filtered_df)
+    st.dataframe(filtered_df_desejado)
 
-    # Mapa Interativo
-    st.subheader("Mapa com as Operadoras")
-    fig = px.scatter_geo(
+
+    # Mapa Interativo com Estil
+
+    # Definindo as cores específicas para cada operadora
+    cores_operadoras = {
+        "CLARO": "#FF0B2C",
+        "VIVO": "#741B7C",
+        "TIM": "#732BF5",
+        "BRISANET": "#FAB133",
+        "ALGAR": "#7E84F7",
+        "GIGA+": "#27B823",
+        "UNIFIQUE TELECOMUNICACOES S/A": "#0023F5",
+        "SERCOMTEL": "#746FF5"
+    }
+
+    # Mapa Interativo com cores personalizadas
+    st.subheader("Mapa Personalizado por Operadora")
+    fig = px.scatter_mapbox(
         filtered_df,
         lat='Latitude',
         lon='Longitude',
-        color='Operadora',
+        color='Operadora',  # Variável categórica
         hover_name='Endereço',
         hover_data=['Bairro', 'Tecnologia', 'Geração'],
-        title="Localização das Operadoras"
+        title="Localização das Operadoras",
+        mapbox_style="carto-positron",
+        color_discrete_map=cores_operadoras  # Aplicando cores personalizadas
     )
     st.plotly_chart(fig)
 
     # Gráfico de Colunas com Operadoras
     st.subheader("Gráfico de Operadoras")
-    operadoras_count = filtered_df.groupby('Operadora', as_index=False)['Número Estação'].sum()
+    operadoras_count = filtered_df.groupby('Operadora', as_index=False)['Número Estação'].count()
     fig_operadoras = px.bar(
         operadoras_count,
         x='Operadora',
         y='Número Estação',
         labels={'Operadora': 'Operadora', 'Número Estação': 'Total de Estações'},
-        title="Total de Estações por Operadora"
+        title="Total de Estações por Operadora",
+        color='Operadora',  # Usando a coluna 'Operadora' para a cor
+        color_discrete_map=cores_operadoras  # Aplicando as cores personalizadas
     )
     st.plotly_chart(fig_operadoras)
 
     # Gráfico de Colunas com Gerações
     st.subheader("Gráfico de Gerações")
-    geracoes_count = filtered_df.groupby('Geração', as_index=False)['Número Estação'].sum()
+    geracoes_count = filtered_df.groupby('Geração', as_index=False)['Número Estação'].count()
     fig_geracoes = px.bar(
         geracoes_count,
         x='Geração',
@@ -160,3 +195,57 @@ if __name__ == "__main__":
         title="Total de Estações por Geração"
     )
     st.plotly_chart(fig_geracoes)
+
+    # Entradas para o usuário
+    st.sidebar.subheader("Consulta de Estações mais Próximas")
+
+    # Entradas para latitude e longitude com base na precisão (número de casas decimais)
+    precisao_lat = st.sidebar.slider("Precisão para Latitude", min_value=1, max_value=10, value=6)
+    precisao_lon = st.sidebar.slider("Precisão para Longitude", min_value=1, max_value=10, value=6)
+
+    # Número de casas decimais ajustável
+    lat_usuario = st.sidebar.number_input("Latitude", min_value=-90.0, max_value=90.0, step=10**(-precisao_lat), format=f"%.{precisao_lat}f")
+    lon_usuario = st.sidebar.number_input("Longitude", min_value=-180.0, max_value=180.0, step=10**(-precisao_lon), format=f"%.{precisao_lon}f")
+
+    # Raio em km
+    raio_km = st.sidebar.number_input("Raio (km)", min_value=1, max_value=500, step=1)
+
+
+    # Função para calcular a distância entre dois pontos geográficos
+    def calcular_distancia(lat1, lon1, lat2, lon2):
+        """Calcula a distância em quilômetros entre dois pontos geográficos."""
+        p1 = (lat1, lon1)
+        p2 = (lat2, lon2)
+        distancia = geodesic(p1, p2).km
+        return distancia
+
+    # Função para encontrar as estações mais próximas
+    def encontrar_estacoes_proximas(lat_usuario, lon_usuario, raio_km, filtered_df):
+        # Calculando a distância de cada estação para o usuário
+        filtered_df['Distancia'] = filtered_df.apply(
+            lambda row: calcular_distancia(lat_usuario, lon_usuario, row['Latitude'], row['Longitude']),
+            axis=1
+        )
+        
+        # Encontrar as estações dentro do raio
+        estacoes_proximas = filtered_df[filtered_df['Distancia'] <= raio_km]
+        
+        if not estacoes_proximas.empty:
+            # Ordenar as estações mais próximas pela distância
+            estacoes_proximas = estacoes_proximas.sort_values(by='Distancia')  # Ordena pela distância
+            # Selecionar apenas as colunas desejadas
+            colunas_desejadas.append('Distancia')
+            estacoes_proximas = estacoes_proximas[colunas_desejadas]
+            return estacoes_proximas
+        return None
+
+    # Encontrar e mostrar as estações mais próximas
+    if lat_usuario and lon_usuario and raio_km:
+        estacoes_proximas = encontrar_estacoes_proximas(lat_usuario, lon_usuario, raio_km, filtered_df)
+        if estacoes_proximas is not None:
+            st.subheader(f"As estações mais próximas dentro de {raio_km} km")
+            st.dataframe(estacoes_proximas)  # Exibe as estações mais próximas com as colunas limitadas
+        else:
+            st.warning(f"Nenhuma estação encontrada dentro de {raio_km} km.")
+    else:
+        st.warning("Por favor, insira a latitude, longitude e raio para buscar as estações.")
