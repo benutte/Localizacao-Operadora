@@ -32,6 +32,9 @@ Este projeto tem como objetivo, realizar consultas, gerar visualizações intera
 
 📥 Como Rodar o Projeto
 
+    0. Download dos dados:
+        https://informacoes.anatel.gov.br/paineis/outorga-e-licenciamento/estacoes-do-smp
+    
     1. Clone este repositório:
         git clone https://github.com/benutte/Localizacao-Operadora.git
     
