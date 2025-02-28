@@ -68,7 +68,7 @@ if __name__ == "__main__":
     db_path = 'estacoes_smp.db'
     log_path = 'update_log.txt'
 
-    # Verificar se é necessário recriar o banco
+    # Verifica se é necessário recriar o banco
     if precisa_recriar_banco(log_path):
         st.info("Atualizando o banco de dados com os dados mais recentes...")
         tratar_dados(csv_path, db_path)
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         options=query_db("SELECT DISTINCT UF FROM estacoes")['UF'].tolist()
     )
 
-    # Configurar filtros para Cidade
+    # Configura filtros para Cidade
     cidade_filter = st.sidebar.multiselect(
         "Selecione as cidades:",
         options=query_db("SELECT DISTINCT `Município-UF` FROM estacoes")["Município-UF"].tolist()
@@ -123,17 +123,17 @@ if __name__ == "__main__":
         st.info("Selecione ao menos um estado (UF) para carregar os dados.")
         st.stop()
 
-    # Filtrar os dados por cidade se algum filtro de cidade for selecionado
+    # Filtra os dados por cidade se algum filtro de cidade for selecionado
     if cidade_filter:
         filtered_df = filtered_df[filtered_df['Municipio'].isin(cidade_filter)]
 
-    # Limitar a quantidade de linhas exibidas
+    # Limita a quantidade de linhas exibidas
     max_rows = st.sidebar.slider("Máximo de linhas exibidas:", min_value=100, max_value=5000, step=100, value=1000)
     filtered_df = filtered_df.head(max_rows)
     # Defina as colunas desejadas
     colunas_desejadas = ['UF', 'Municipio', 'Bairro', 'Endereço', 'Tecnologia', 'Operadora', 'Geração', 'FreqRxMHz', 'FreqTxMHz']
 
-    # Filtrar as colunas desejadas no DataFrame
+    # Filtra as colunas desejadas no DataFrame
     filtered_df_desejado = filtered_df[colunas_desejadas]
 
     # Tabela Interativa
@@ -227,24 +227,24 @@ if __name__ == "__main__":
             axis=1
         )
         
-        # Encontrar as estações dentro do raio
+        # Encontra as estações dentro do raio
         estacoes_proximas = filtered_df[filtered_df['Distancia'] <= raio_km]
         
         if not estacoes_proximas.empty:
-            # Ordenar as estações mais próximas pela distância
+            # Ordena as estações mais próximas pela distância
             estacoes_proximas = estacoes_proximas.sort_values(by='Distancia')  # Ordena pela distância
-            # Selecionar apenas as colunas desejadas
+            # Seleciona apenas as colunas desejadas
             colunas_desejadas.append('Distancia')
             estacoes_proximas = estacoes_proximas[colunas_desejadas]
             return estacoes_proximas
         return None
 
-    # Encontrar e mostrar as estações mais próximas
+    # Encontra e mostrar as estações mais próximas
     if lat_usuario and lon_usuario and raio_km:
         estacoes_proximas = encontrar_estacoes_proximas(lat_usuario, lon_usuario, raio_km, filtered_df)
         if estacoes_proximas is not None:
             st.subheader(f"As estações mais próximas dentro de {raio_km} km")
-            st.dataframe(estacoes_proximas)  # Exibe as estações mais próximas com as colunas limitadas
+            st.dataframe(estacoes_proximas)
         else:
             st.warning(f"Nenhuma estação encontrada dentro de {raio_km} km.")
     else:
