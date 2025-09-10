@@ -59,4 +59,4 @@ Este projeto tem como objetivo, realizar consultas, gerar visualizações intera
 
     Se tiver dúvidas ou sugestões, entre em contato:
 
-    Email: benutte20@dominio.com
+    Email: benutte20@gmail.com
